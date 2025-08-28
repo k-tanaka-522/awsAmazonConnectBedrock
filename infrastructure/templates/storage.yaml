@@ -40,26 +40,27 @@ Resources:
             MaxAge: 3600
 
   # CloudFormationアーティファクト用S3バケット（既存の場合はスキップ）
-  ArtifactsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'helpdesk-cfn-artifacts-${Environment}-${AWS::Region}'
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          - Id: DeleteOldArtifacts
-            Status: Enabled
-            ExpirationInDays: 30
+  # 注：deploy.shスクリプトで既に作成されているため、ここではコメントアウト
+  # ArtifactsBucket:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !Sub 'helpdesk-cfn-artifacts-${Environment}-${AWS::Region}'
+  #     BucketEncryption:
+  #       ServerSideEncryptionConfiguration:
+  #         - ServerSideEncryptionByDefault:
+  #             SSEAlgorithm: AES256
+  #     PublicAccessBlockConfiguration:
+  #       BlockPublicAcls: true
+  #       BlockPublicPolicy: true
+  #       IgnorePublicAcls: true
+  #       RestrictPublicBuckets: true
+  #     VersioningConfiguration:
+  #       Status: Enabled
+  #     LifecycleConfiguration:
+  #       Rules:
+  #         - Id: DeleteOldArtifacts
+  #           Status: Enabled
+  #           ExpirationInDays: 30
 
 Outputs:
   KnowledgeBaseBucketName:
@@ -73,9 +74,3 @@ Outputs:
     Value: !GetAtt KnowledgeBaseBucket.Arn
     Export:
       Name: !Sub '${StackName}-KnowledgeBaseBucketArn'
-  
-  ArtifactsBucketName:
-    Description: 'S3 Bucket Name for CloudFormation Artifacts'
-    Value: !Ref ArtifactsBucket
-    Export:
-      Name: !Sub '${StackName}-ArtifactsBucketName'
