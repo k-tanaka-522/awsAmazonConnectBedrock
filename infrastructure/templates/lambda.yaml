@@ -35,29 +35,8 @@ Resources:
       Runtime: python3.11
       Handler: helpdesk_processor.lambda_handler
       Code:
-        ZipFile: |
-          import json
-          import logging
-          import os
-          
-          logger = logging.getLogger()
-          logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
-          
-          def lambda_handler(event, context):
-              logger.info(f"Received event: {json.dumps(event)}")
-              
-              # 仮の応答を返す（後で実装）
-              response = {
-                  'response': 'これは仮の応答です。後ほど実装されます。',
-                  'confidence': 1.0,
-                  'category': 'test',
-                  'processingTime': 0.1
-              }
-              
-              return {
-                  'statusCode': 200,
-                  'body': json.dumps(response)
-              }
+        S3Bucket: !Sub 'helpdesk-cfn-artifacts-${Environment}-${AWS::Region}'
+        S3Key: 'lambda/helpdesk_processor.zip'
       Role: !Ref LambdaExecutionRoleArn
       Timeout: 30
       MemorySize: 256

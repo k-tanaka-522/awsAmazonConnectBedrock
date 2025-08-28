@@ -80,16 +80,101 @@ Resources:
           ]
         }
 
-  # AI応答Contact Flow（フェーズ2で実装）
-  # BasicContactFlow:
-  #   Type: AWS::Connect::ContactFlow
-  #   Properties:
-  #     InstanceArn: !GetAtt ConnectInstance.Arn
-  #     Name: !Sub 'helpdesk-ai-flow-${Environment}'
-  #     Type: CONTACT_FLOW
-  #     Description: 'AI応答用メインフロー'
-  #     Content: !Sub |
-  #       ${ContactFlowContent}
+  # AI応答Contact Flow
+  AIContactFlow:
+    Type: AWS::Connect::ContactFlow
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Name: !Sub 'helpdesk-ai-flow-${Environment}'
+      Type: CONTACT_FLOW
+      Description: 'AI応答用メインフロー'
+      Content: !Sub |
+        {
+          "Version": "2019-10-30",
+          "StartAction": "start",
+          "Actions": [
+            {
+              "Identifier": "start",
+              "Type": "SetLoggingBehavior",
+              "Parameters": {"LoggingBehavior": {"Enable": true}},
+              "Transitions": {"NextAction": "welcome"}
+            },
+            {
+              "Identifier": "welcome",
+              "Type": "MessageParticipant",
+              "Parameters": {"Text": "お電話ありがとうございます。レジシステムのサポートです。ご用件をお話しください。"},
+              "Transitions": {"NextAction": "get-input"}
+            },
+            {
+              "Identifier": "get-input",
+              "Type": "GetParticipantInput",
+              "Parameters": {
+                "Text": "ご用件をお話しください。",
+                "InputTimeLimitSeconds": 30,
+                "StoreInput": true,
+                "InputType": "Speech"
+              },
+              "Transitions": {
+                "NextAction": "invoke-lambda",
+                "Errors": [
+                  {"ErrorType": "NoMatchingError", "NextAction": "no-input"},
+                  {"ErrorType": "InputTimeLimitExceeded", "NextAction": "no-input"}
+                ]
+              }
+            },
+            {
+              "Identifier": "invoke-lambda",
+              "Type": "InvokeLambdaFunction",
+              "Parameters": {
+                "FunctionArn": "${LambdaFunctionArn}",
+                "TimeLimit": 25,
+                "InvocationParameters": {
+                  "Details": {
+                    "Parameters": {
+                      "transcribedText": "$.Lex.Transcription",
+                      "contactId": "$.ContactId",
+                      "customerPhoneNumber": "$.CustomerEndpoint.Address"
+                    }
+                  }
+                }
+              },
+              "Transitions": {
+                "NextAction": "play-response",
+                "Errors": [{"ErrorType": "NoMatchingError", "NextAction": "error-message"}]
+              }
+            },
+            {
+              "Identifier": "play-response",
+              "Type": "MessageParticipant",
+              "Parameters": {"Text": "$.External.response"},
+              "Transitions": {"NextAction": "thank-you"}
+            },
+            {
+              "Identifier": "no-input",
+              "Type": "MessageParticipant",
+              "Parameters": {"Text": "申し訳ございません。音声が聞き取れませんでした。"},
+              "Transitions": {"NextAction": "thank-you"}
+            },
+            {
+              "Identifier": "error-message",
+              "Type": "MessageParticipant",
+              "Parameters": {"Text": "申し訳ございません。システムエラーが発生しました。"},
+              "Transitions": {"NextAction": "thank-you"}
+            },
+            {
+              "Identifier": "thank-you",
+              "Type": "MessageParticipant",
+              "Parameters": {"Text": "お電話ありがとうございました。"},
+              "Transitions": {"NextAction": "disconnect"}
+            },
+            {
+              "Identifier": "disconnect",
+              "Type": "Disconnect",
+              "Parameters": {},
+              "Transitions": {}
+            }
+          ]
+        }
 
 Outputs:
   ConnectInstanceId:
@@ -115,3 +200,15 @@ Outputs:
     Value: !GetAtt FixedResponseFlow.ContactFlowArn
     Export:
       Name: !Sub '${StackName}-FixedResponseFlowArn'
+  
+  AIContactFlowId:
+    Description: 'AI Contact Flow ID'
+    Value: !GetAtt AIContactFlow.ContactFlowId
+    Export:
+      Name: !Sub '${StackName}-AIContactFlowId'
+  
+  AIContactFlowArn:
+    Description: 'AI Contact Flow ARN'
+    Value: !GetAtt AIContactFlow.ContactFlowArn
+    Export:
+      Name: !Sub '${StackName}-AIContactFlowArn'

@@ -70,25 +70,25 @@ Resources:
   #       - Key: Component
   #         Value: BedrockKB
 
-  # # Step 3: Lambda関数
-  # LambdaStack:
-  #   Type: AWS::CloudFormation::Stack
-  #   DependsOn: 
-  #     - IAMStack
-  #     - StorageStack
-  #   Properties:
-  #     TemplateURL: ./templates/lambda.yaml
-  #     Parameters:
-  #       Environment: !Ref Environment
-  #       BedrockModelId: !Ref BedrockModelId
-  #       LambdaExecutionRoleArn: !GetAtt IAMStack.Outputs.LambdaExecutionRoleArn
-  #       KnowledgeBaseBucketName: !GetAtt StorageStack.Outputs.KnowledgeBaseBucketName
-  #       StackName: !Ref AWS::StackName
-  #     Tags:
-  #       - Key: Environment
-  #         Value: !Ref Environment
-  #       - Key: Component
-  #         Value: Lambda
+  # Step 3: Lambda関数
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - IAMStack
+      - StorageStack
+    Properties:
+      TemplateURL: ./templates/lambda.yaml
+      Parameters:
+        Environment: !Ref Environment
+        BedrockModelId: !Ref BedrockModelId
+        LambdaExecutionRoleArn: !GetAtt IAMStack.Outputs.LambdaExecutionRoleArn
+        KnowledgeBaseBucketName: !GetAtt StorageStack.Outputs.KnowledgeBaseBucketName
+        StackName: !Ref AWS::StackName
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Lambda
 
   # # Step 4: Amazon Connect
   # ConnectStack:
@@ -140,11 +140,11 @@ Outputs:
   #   Export:
   #     Name: !Sub '${AWS::StackName}-ConnectInstanceId'
 
-  # LambdaFunctionArn:
-  #   Description: 'Helpdesk Lambda Function ARN'
-  #   Value: !GetAtt LambdaStack.Outputs.LambdaFunctionArn
-  #   Export:
-  #     Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+  LambdaFunctionArn:
+    Description: 'Helpdesk Lambda Function ARN'
+    Value: !GetAtt LambdaStack.Outputs.LambdaFunctionArn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
 
   KnowledgeBaseBucketName:
     Description: 'S3 Bucket for Knowledge Base'

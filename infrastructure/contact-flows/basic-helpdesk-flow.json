@@ -114,7 +114,7 @@
       "Identifier": "invoke-lambda",
       "Type": "InvokeLambdaFunction",
       "Parameters": {
-        "FunctionArn": "LAMBDA_FUNCTION_ARN_PLACEHOLDER",
+        "FunctionArn": "${LambdaFunctionArn}",
         "TimeLimit": 25,
         "InvocationParameters": {
           "transcribedText": "$.Lex.Transcription",

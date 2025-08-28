@@ -204,19 +204,28 @@ echo -e "${GREEN}Lambda関数をパッケージング中...${NC}"
 if [ -d "src/lambda" ]; then
     # 一時ディレクトリの作成
     TEMP_DIR=$(mktemp -d)
+    LAMBDA_DIR="$TEMP_DIR/lambda"
+    mkdir -p "$LAMBDA_DIR"
     
-    # Lambda関数をzipファイルにパッケージ
-    for lambda_file in src/lambda/*.py; do
-        if [ -f "$lambda_file" ]; then
-            filename=$(basename "$lambda_file" .py)
-            echo "パッケージング: $filename"
-            
-            # Pythonファイルをzipに追加
-            cp "$lambda_file" "$TEMP_DIR/"
-            (cd "$TEMP_DIR" && zip -q "${filename}.zip" "$(basename "$lambda_file")")
-            
-            # S3にアップロード
-            aws s3 cp "$TEMP_DIR/${filename}.zip" "s3://${S3_BUCKET}/lambda/${filename}.zip" \
+    # 全てのLambda関数ファイルを一つのパッケージに
+    echo "Lambda関数をパッケージング中..."
+    
+    # 全てのPythonファイルをコピー
+    cp -r src/lambda/*.py "$LAMBDA_DIR/"
+    
+    # helpdesk_processor用のzipを作成（メイン関数）
+    (cd "$LAMBDA_DIR" && zip -r helpdesk_processor.zip *.py)
+    
+    # S3にアップロード
+    aws s3 cp "$LAMBDA_DIR/helpdesk_processor.zip" "s3://${S3_BUCKET}/lambda/helpdesk_processor.zip" \
+        --profile "$PROFILE" \
+        --region "$REGION"
+    
+    # 他のLambda関数も個別にパッケージング（必要に応じて）
+    for lambda_file in quality_metrics kb_update; do
+        if [ -f "$LAMBDA_DIR/${lambda_file}.py" ]; then
+            (cd "$LAMBDA_DIR" && zip -r "${lambda_file}.zip" "${lambda_file}.py" error_handler.py)
+            aws s3 cp "$LAMBDA_DIR/${lambda_file}.zip" "s3://${S3_BUCKET}/lambda/${lambda_file}.zip" \
                 --profile "$PROFILE" \
                 --region "$REGION"
         fi
