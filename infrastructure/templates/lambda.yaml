@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automated Helpdesk PoC - Lambda Functions'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Deployment environment'
+  
+  BedrockModelId:
+    Type: String
+    Description: 'Bedrock model ID to use'
+  
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: 'Lambda execution role ARN'
+  
+  KnowledgeBaseBucketName:
+    Type: String
+    Description: 'S3 bucket name for knowledge base'
+  
+  StackName:
+    Type: String
+    Description: 'Parent stack name'
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, 'production']
+  IsDebug: !Equals [!Ref Environment, 'debug']
+
+Resources:
+  # メイン処理Lambda関数
+  HelpdeskProcessor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'automated-helpdesk-processor-${Environment}'
+      Runtime: python3.11
+      Handler: helpdesk_processor.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          import os
+          
+          logger = logging.getLogger()
+          logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+          
+          def lambda_handler(event, context):
+              logger.info(f"Received event: {json.dumps(event)}")
+              
+              # 仮の応答を返す（後で実装）
+              response = {
+                  'response': 'これは仮の応答です。後ほど実装されます。',
+                  'confidence': 1.0,
+                  'category': 'test',
+                  'processingTime': 0.1
+              }
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps(response)
+              }
+      Role: !Ref LambdaExecutionRoleArn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          KNOWLEDGE_BASE_ID: !If [IsDebug, 'debug-placeholder', 'production-placeholder']
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          LOG_LEVEL: !If [IsProduction, 'INFO', 'DEBUG']
+          COST_LIMIT_DAILY: !If [IsProduction, '10', '5']
+          KNOWLEDGE_BUCKET: !Ref KnowledgeBaseBucketName
+
+  # Lambda Permission for Connect
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HelpdeskProcessor
+      Action: lambda:InvokeFunction
+      Principal: connect.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  # CloudWatch Log Group
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/automated-helpdesk-processor-${Environment}'
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+  # 品質メトリクス測定Lambda（フェーズ3で実装）
+  # QualityMetrics:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     FunctionName: !Sub 'helpdesk-quality-metrics-${Environment}'
+  #     Runtime: python3.11
+  #     Handler: quality_metrics.lambda_handler
+  #     Code:
+  #       ZipFile: |
+  #         # 後で実装
+  #     Role: !Ref LambdaExecutionRoleArn
+  #     Timeout: 10
+  #     MemorySize: 128
+
+  # ナレッジベース更新Lambda（フェーズ3で実装）
+  # KnowledgeBaseUpdate:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     FunctionName: !Sub 'helpdesk-kb-update-${Environment}'
+  #     Runtime: python3.11
+  #     Handler: kb_update.lambda_handler
+  #     Code:
+  #       ZipFile: |
+  #         # 後で実装
+  #     Role: !Ref LambdaExecutionRoleArn
+  #     Timeout: 300
+  #     MemorySize: 512
+
+Outputs:
+  LambdaFunctionArn:
+    Description: 'Helpdesk Lambda Function ARN'
+    Value: !GetAtt HelpdeskProcessor.Arn
+    Export:
+      Name: !Sub '${StackName}-LambdaFunctionArn'
+  
+  LambdaFunctionName:
+    Description: 'Helpdesk Lambda Function Name'
+    Value: !Ref HelpdeskProcessor
+    Export:
+      Name: !Sub '${StackName}-LambdaFunctionName'

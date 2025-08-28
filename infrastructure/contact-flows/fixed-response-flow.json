@@ -1,0 +1,149 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "start",
+  "Metadata": {
+    "entryPointPosition": {"x": 20, "y": 20},
+    "snapToGrid": false,
+    "ActionMetadata": {
+      "start": {
+        "position": {"x": 50, "y": 50}
+      },
+      "welcome": {
+        "position": {"x": 250, "y": 50}
+      },
+      "menu": {
+        "position": {"x": 450, "y": 50}
+      },
+      "power-issue": {
+        "position": {"x": 650, "y": 50}
+      },
+      "barcode-issue": {
+        "position": {"x": 650, "y": 150}
+      },
+      "receipt-issue": {
+        "position": {"x": 650, "y": 250}
+      },
+      "other-issue": {
+        "position": {"x": 650, "y": 350}
+      },
+      "disconnect": {
+        "position": {"x": 850, "y": 200}
+      }
+    }
+  },
+  "Actions": [
+    {
+      "Identifier": "start",
+      "Type": "SetLoggingBehavior",
+      "Parameters": {
+        "LoggingBehavior": {
+          "Enable": true
+        }
+      },
+      "Transitions": {
+        "NextAction": "welcome"
+      }
+    },
+    {
+      "Identifier": "welcome",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "お電話ありがとうございます。レジシステムのサポートです。"
+      },
+      "Transitions": {
+        "NextAction": "menu"
+      }
+    },
+    {
+      "Identifier": "menu",
+      "Type": "GetParticipantInput",
+      "Parameters": {
+        "Text": "電源の問題は1を、バーコードの問題は2を、レシートの問題は3を、その他の問題は4を押してください。",
+        "InputType": "DTMF",
+        "InputTimeLimitSeconds": 10,
+        "DTMFConfiguration": {
+          "MaxDigits": 1
+        }
+      },
+      "Transitions": {
+        "NextAction": "other-issue",
+        "Conditions": [
+          {
+            "NextAction": "power-issue",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": ["1"]
+            }
+          },
+          {
+            "NextAction": "barcode-issue",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": ["2"]
+            }
+          },
+          {
+            "NextAction": "receipt-issue",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": ["3"]
+            }
+          },
+          {
+            "NextAction": "other-issue",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": ["4"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "power-issue",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "電源の問題について。まず電源コードが正しく接続されているか確認してください。接続に問題がない場合は、電源ボタンを10秒間長押しして強制再起動を試してください。それでも解決しない場合は、技術者にお問い合わせください。"
+      },
+      "Transitions": {
+        "NextAction": "disconnect"
+      }
+    },
+    {
+      "Identifier": "barcode-issue",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "バーコードの問題について。バーコードリーダーのレンズが汚れていないか確認してください。汚れている場合は、乾いた布で優しく拭き取ってください。また、バーコードとの距離は5から15センチ程度が最適です。"
+      },
+      "Transitions": {
+        "NextAction": "disconnect"
+      }
+    },
+    {
+      "Identifier": "receipt-issue",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "レシートの問題について。レシートプリンターの用紙が正しくセットされているか確認してください。用紙切れの場合は新しいロールに交換してください。用紙詰まりの場合は、電源を切ってから詰まった用紙を取り除いてください。"
+      },
+      "Transitions": {
+        "NextAction": "disconnect"
+      }
+    },
+    {
+      "Identifier": "other-issue",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "その他のお問い合わせについては、営業時間内に技術サポートまでご連絡ください。お電話ありがとうございました。"
+      },
+      "Transitions": {
+        "NextAction": "disconnect"
+      }
+    },
+    {
+      "Identifier": "disconnect",
+      "Type": "Disconnect",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automated Helpdesk PoC - Main Stack'
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [debug, staging, production]
+    Description: 'Deployment environment'
+  
+  BranchName:
+    Type: String
+    Default: 'main'
+    Description: 'Git branch name for debug environment'
+  
+  BedrockModelId:
+    Type: String
+    Default: 'claude-3-5-sonnet-20241022'
+    Description: 'Bedrock model ID to use'
+    AllowedValues:
+      - 'claude-3-5-sonnet-20241022'
+      - 'claude-3-haiku-20240307'
+      - 'amazon-nova-pro-v1:0'
+
+Resources:
+  # Step 1: IAMロールとポリシー
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/iam.yaml
+      Parameters:
+        Environment: !Ref Environment
+        StackName: !Ref AWS::StackName
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: IAM
+
+  # Step 2: S3バケット
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: IAMStack
+    Properties:
+      TemplateURL: ./templates/storage.yaml
+      Parameters:
+        Environment: !Ref Environment
+        StackName: !Ref AWS::StackName
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Storage
+
+  # # Step 2.5: Bedrock Knowledge Base（フェーズ2）
+  # BedrockKBStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   DependsOn: 
+  #     - IAMStack
+  #     - StorageStack
+  #   Properties:
+  #     TemplateURL: ./templates/bedrock-kb.yaml
+  #     Parameters:
+  #       Environment: !Ref Environment
+  #       KnowledgeBaseBucketName: !GetAtt StorageStack.Outputs.KnowledgeBaseBucketName
+  #       BedrockKnowledgeBaseRoleArn: !GetAtt IAMStack.Outputs.BedrockKnowledgeBaseRoleArn
+  #       StackName: !Ref AWS::StackName
+  #     Tags:
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Component
+  #         Value: BedrockKB
+
+  # # Step 3: Lambda関数
+  # LambdaStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   DependsOn: 
+  #     - IAMStack
+  #     - StorageStack
+  #   Properties:
+  #     TemplateURL: ./templates/lambda.yaml
+  #     Parameters:
+  #       Environment: !Ref Environment
+  #       BedrockModelId: !Ref BedrockModelId
+  #       LambdaExecutionRoleArn: !GetAtt IAMStack.Outputs.LambdaExecutionRoleArn
+  #       KnowledgeBaseBucketName: !GetAtt StorageStack.Outputs.KnowledgeBaseBucketName
+  #       StackName: !Ref AWS::StackName
+  #     Tags:
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Component
+  #         Value: Lambda
+
+  # # Step 4: Amazon Connect
+  # ConnectStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   DependsOn:
+  #     - IAMStack
+  #     - LambdaStack
+  #   Properties:
+  #     TemplateURL: ./templates/connect.yaml
+  #     Parameters:
+  #       Environment: !Ref Environment
+  #       ConnectRoleArn: !GetAtt IAMStack.Outputs.ConnectRoleArn
+  #       LambdaFunctionArn: !GetAtt LambdaStack.Outputs.LambdaFunctionArn
+  #       StackName: !Ref AWS::StackName
+  #     Tags:
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Component
+  #         Value: Connect
+
+  # # Step 5: モニタリングとアラート
+  # MonitoringStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   DependsOn:
+  #     - LambdaStack
+  #     - ConnectStack
+  #   Properties:
+  #     TemplateURL: ./templates/monitoring.yaml
+  #     Parameters:
+  #       Environment: !Ref Environment
+  #       LambdaFunctionName: !GetAtt LambdaStack.Outputs.LambdaFunctionName
+  #       StackName: !Ref AWS::StackName
+  #     Tags:
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Component
+  #         Value: Monitoring
+
+Outputs:
+  IAMStackId:
+    Description: 'IAM Stack ID'
+    Value: !Ref IAMStack
+    Export:
+      Name: !Sub '${AWS::StackName}-IAMStackId'
+
+  # ConnectInstanceId:
+  #   Description: 'Amazon Connect Instance ID'
+  #   Value: !GetAtt ConnectStack.Outputs.ConnectInstanceId
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-ConnectInstanceId'
+
+  # LambdaFunctionArn:
+  #   Description: 'Helpdesk Lambda Function ARN'
+  #   Value: !GetAtt LambdaStack.Outputs.LambdaFunctionArn
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+
+  KnowledgeBaseBucketName:
+    Description: 'S3 Bucket for Knowledge Base'
+    Value: !GetAtt StorageStack.Outputs.KnowledgeBaseBucketName
+    Export:
+      Name: !Sub '${AWS::StackName}-KnowledgeBaseBucket'
+
+  # AlarmTopicArn:
+  #   Description: 'SNS Topic for Alarms'
+  #   Value: !GetAtt MonitoringStack.Outputs.AlarmTopicArn
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-AlarmTopic'

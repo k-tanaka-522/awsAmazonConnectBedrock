@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automated Helpdesk PoC - Amazon Connect Instance'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Deployment environment'
+  
+  ConnectRoleArn:
+    Type: String
+    Description: 'Connect role ARN'
+  
+  LambdaFunctionArn:
+    Type: String
+    Description: 'Lambda function ARN'
+  
+  StackName:
+    Type: String
+    Description: 'Parent stack name'
+
+Resources:
+  # Amazon Connect インスタンス
+  ConnectInstance:
+    Type: AWS::Connect::Instance
+    Properties:
+      InstanceAlias: !Sub 'helpdesk-${Environment}'
+      IdentityManagementType: 'CONNECT_MANAGED'
+      Attributes:
+        InboundCalls: true
+        OutboundCalls: false
+        ContactflowLogs: true
+        AutoResolveBestVoices: true
+
+  # CloudWatch Log Group for Connect
+  ConnectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/connect/helpdesk-${Environment}'
+      RetentionInDays: 7
+
+  # Lambda関数の関連付け
+  ConnectLambdaAssociation:
+    Type: AWS::Connect::IntegrationAssociation
+    Properties:
+      InstanceId: !GetAtt ConnectInstance.Id
+      IntegrationType: LAMBDA_FUNCTION
+      IntegrationArn: !Ref LambdaFunctionArn
+
+  # 固定応答Contact Flow（フェーズ1用）
+  FixedResponseFlow:
+    Type: AWS::Connect::ContactFlow
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Name: !Sub 'helpdesk-fixed-response-flow-${Environment}'
+      Type: CONTACT_FLOW
+      Description: '固定応答用フロー（フェーズ1）'
+      Content: |
+        {
+          "Version": "2019-10-30",
+          "StartAction": "start",
+          "Actions": [
+            {
+              "Identifier": "start",
+              "Type": "SetLoggingBehavior",
+              "Parameters": {"LoggingBehavior": {"Enable": true}},
+              "Transitions": {"NextAction": "welcome"}
+            },
+            {
+              "Identifier": "welcome",
+              "Type": "MessageParticipant",
+              "Parameters": {"Text": "お電話ありがとうございます。レジシステムのサポートです。現在テスト中です。"},
+              "Transitions": {"NextAction": "disconnect"}
+            },
+            {
+              "Identifier": "disconnect",
+              "Type": "Disconnect",
+              "Parameters": {},
+              "Transitions": {}
+            }
+          ]
+        }
+
+  # AI応答Contact Flow（フェーズ2で実装）
+  # BasicContactFlow:
+  #   Type: AWS::Connect::ContactFlow
+  #   Properties:
+  #     InstanceArn: !GetAtt ConnectInstance.Arn
+  #     Name: !Sub 'helpdesk-ai-flow-${Environment}'
+  #     Type: CONTACT_FLOW
+  #     Description: 'AI応答用メインフロー'
+  #     Content: !Sub |
+  #       ${ContactFlowContent}
+
+Outputs:
+  ConnectInstanceId:
+    Description: 'Amazon Connect Instance ID'
+    Value: !GetAtt ConnectInstance.Id
+    Export:
+      Name: !Sub '${StackName}-ConnectInstanceId'
+  
+  ConnectInstanceArn:
+    Description: 'Amazon Connect Instance ARN'
+    Value: !GetAtt ConnectInstance.Arn
+    Export:
+      Name: !Sub '${StackName}-ConnectInstanceArn'
+  
+  FixedResponseFlowId:
+    Description: 'Fixed Response Contact Flow ID'
+    Value: !GetAtt FixedResponseFlow.ContactFlowId
+    Export:
+      Name: !Sub '${StackName}-FixedResponseFlowId'
+  
+  FixedResponseFlowArn:
+    Description: 'Fixed Response Contact Flow ARN'
+    Value: !GetAtt FixedResponseFlow.ContactFlowArn
+    Export:
+      Name: !Sub '${StackName}-FixedResponseFlowArn'

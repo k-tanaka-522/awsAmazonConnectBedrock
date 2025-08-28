@@ -1,0 +1,202 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "4d5f4e3a-2b1a-4c3d-8e7f-1a2b3c4d5e6f",
+  "Metadata": {
+    "entryPointPosition": {"x": 20, "y": 20},
+    "snapToGrid": false,
+    "ActionMetadata": {
+      "4d5f4e3a-2b1a-4c3d-8e7f-1a2b3c4d5e6f": {
+        "position": {"x": 50, "y": 50}
+      },
+      "welcome-message": {
+        "position": {"x": 250, "y": 50}
+      },
+      "get-customer-input": {
+        "position": {"x": 450, "y": 50}
+      },
+      "check-input": {
+        "position": {"x": 650, "y": 50}
+      },
+      "invoke-lambda": {
+        "position": {"x": 850, "y": 50}
+      },
+      "check-lambda-result": {
+        "position": {"x": 1050, "y": 50}
+      },
+      "play-response": {
+        "position": {"x": 1250, "y": 50}
+      },
+      "error-message": {
+        "position": {"x": 850, "y": 250}
+      },
+      "no-input-message": {
+        "position": {"x": 650, "y": 250}
+      },
+      "thank-you-message": {
+        "position": {"x": 1450, "y": 50}
+      },
+      "disconnect": {
+        "position": {"x": 1650, "y": 50}
+      }
+    }
+  },
+  "Actions": [
+    {
+      "Identifier": "4d5f4e3a-2b1a-4c3d-8e7f-1a2b3c4d5e6f",
+      "Type": "SetLoggingBehavior",
+      "Parameters": {
+        "LoggingBehavior": {
+          "Enable": true
+        }
+      },
+      "Transitions": {
+        "NextAction": "welcome-message"
+      }
+    },
+    {
+      "Identifier": "welcome-message",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "お電話ありがとうございます。レジシステムのサポートです。ご用件をお話しください。"
+      },
+      "Transitions": {
+        "NextAction": "get-customer-input"
+      }
+    },
+    {
+      "Identifier": "get-customer-input",
+      "Type": "GetParticipantInput",
+      "Parameters": {
+        "Text": "ご用件をお話しください。30秒以内でお願いします。",
+        "InputTimeLimitSeconds": 30,
+        "StoreInput": true,
+        "InputType": "Speech",
+        "SpeechRecognition": {
+          "Engine": "AmazonTranscribe",
+          "LanguageCode": "ja-JP",
+          "MaximumSpeechDurationSeconds": 30
+        }
+      },
+      "Transitions": {
+        "NextAction": "check-input",
+        "Errors": [
+          {
+            "ErrorType": "NoMatchingError",
+            "NextAction": "no-input-message"
+          },
+          {
+            "ErrorType": "InputTimeLimitExceeded",
+            "NextAction": "no-input-message"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "check-input",
+      "Type": "CheckAttribute",
+      "Parameters": {
+        "Attribute": "$.Lex.Transcription"
+      },
+      "Transitions": {
+        "NextAction": "invoke-lambda",
+        "Conditions": [
+          {
+            "NextAction": "no-input-message",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [""]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "invoke-lambda",
+      "Type": "InvokeLambdaFunction",
+      "Parameters": {
+        "FunctionArn": "LAMBDA_FUNCTION_ARN_PLACEHOLDER",
+        "TimeLimit": 25,
+        "InvocationParameters": {
+          "transcribedText": "$.Lex.Transcription",
+          "contactId": "$.ContactId",
+          "customerPhoneNumber": "$.CustomerEndpoint.Address"
+        }
+      },
+      "Transitions": {
+        "NextAction": "check-lambda-result",
+        "Errors": [
+          {
+            "ErrorType": "NoMatchingError",
+            "NextAction": "error-message"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "check-lambda-result",
+      "Type": "CheckAttribute",
+      "Parameters": {
+        "Attribute": "$.External.response"
+      },
+      "Transitions": {
+        "NextAction": "play-response",
+        "Conditions": [
+          {
+            "NextAction": "error-message",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [""]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "play-response",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "$.External.response",
+        "SSML": false
+      },
+      "Transitions": {
+        "NextAction": "thank-you-message"
+      }
+    },
+    {
+      "Identifier": "error-message",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "申し訳ございません。現在システムが混雑しております。しばらくしてからおかけ直しいただくか、技術者におつなぎいたします。"
+      },
+      "Transitions": {
+        "NextAction": "thank-you-message"
+      }
+    },
+    {
+      "Identifier": "no-input-message",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "申し訳ございません。音声が聞き取れませんでした。もう一度はっきりとお話しいただけますでしょうか。"
+      },
+      "Transitions": {
+        "NextAction": "get-customer-input"
+      }
+    },
+    {
+      "Identifier": "thank-you-message",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "お電話ありがとうございました。"
+      },
+      "Transitions": {
+        "NextAction": "disconnect"
+      }
+    },
+    {
+      "Identifier": "disconnect",
+      "Type": "Disconnect",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}

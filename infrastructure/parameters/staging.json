@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "BranchName",
+    "ParameterValue": "develop"
+  },
+  {
+    "ParameterKey": "BedrockModelId",
+    "ParameterValue": "claude-3-5-sonnet-20241022"
+  }
+]

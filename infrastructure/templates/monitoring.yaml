@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automated Helpdesk PoC - Monitoring and Alarms'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Deployment environment'
+  
+  LambdaFunctionName:
+    Type: String
+    Description: 'Lambda function name for monitoring'
+  
+  StackName:
+    Type: String
+    Description: 'Parent stack name'
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, 'production']
+
+Resources:
+  # SNS Topic for Alarms
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'helpdesk-alarms-${Environment}'
+      DisplayName: !Sub 'Helpdesk Alarms - ${Environment}'
+
+  # 高エラー率アラーム
+  HighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'Helpdesk-HighErrorRate-${Environment}'
+      AlarmDescription: 'Lambda function error rate is too high'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # Lambda実行時間アラーム
+  HighDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'Helpdesk-HighDuration-${Environment}'
+      AlarmDescription: 'Lambda function duration is too high'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 15000  # 15 seconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # 同時実行数アラーム
+  HighConcurrentExecutionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'Helpdesk-HighConcurrency-${Environment}'
+      AlarmDescription: 'Lambda concurrent executions is too high'
+      MetricName: ConcurrentExecutions
+      Namespace: AWS/Lambda
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # カスタムメトリクス用の名前空間（後で品質メトリクス追加）
+  # ResponseTimeAlarm:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: !Sub 'Helpdesk-SlowResponse-${Environment}'
+  #     AlarmDescription: 'Response time is too slow'
+  #     MetricName: ResponseTime
+  #     Namespace: Helpdesk/Quality
+  #     Statistic: Average
+  #     Period: 300
+  #     EvaluationPeriods: 3
+  #     Threshold: 15  # 15秒以上
+  #     ComparisonOperator: GreaterThanThreshold
+
+  # コスト予算アラート
+  CostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub 'Helpdesk-${Environment}-Budget'
+        BudgetLimit:
+          Amount: !If [IsProduction, 100, 20]  # 本番: $100/月, その他: $20/月
+          Unit: USD
+        TimeUnit: MONTHLY
+        BudgetType: COST
+        CostFilters:
+          Service:
+            - Amazon Connect
+            - Amazon Bedrock
+            - AWS Lambda
+            - Amazon S3
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80  # 80%で警告
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref AlarmTopic
+
+Outputs:
+  AlarmTopicArn:
+    Description: 'SNS Topic ARN for Alarms'
+    Value: !Ref AlarmTopic
+    Export:
+      Name: !Sub '${StackName}-AlarmTopicArn'
+  
+  AlarmTopicName:
+    Description: 'SNS Topic Name for Alarms'
+    Value: !GetAtt AlarmTopic.TopicName
+    Export:
+      Name: !Sub '${StackName}-AlarmTopicName'

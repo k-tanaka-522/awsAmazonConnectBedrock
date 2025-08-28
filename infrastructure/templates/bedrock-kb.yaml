@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automated Helpdesk PoC - Bedrock Knowledge Base'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Deployment environment'
+  
+  KnowledgeBaseBucketName:
+    Type: String
+    Description: 'S3 bucket name for knowledge base'
+  
+  BedrockKnowledgeBaseRoleArn:
+    Type: String
+    Description: 'IAM role ARN for Bedrock Knowledge Base'
+  
+  StackName:
+    Type: String
+    Description: 'Parent stack name'
+
+Resources:
+  # OpenSearch Serverless Collection for Knowledge Base
+  OpenSearchCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    Properties:
+      Name: !Sub 'helpdesk-kb-${Environment}'
+      Type: VECTORSEARCH
+      Description: 'Vector store for helpdesk knowledge base'
+
+  # OpenSearch Serverless Security Policy
+  OpenSearchSecurityPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: !Sub 'helpdesk-kb-security-${Environment}'
+      Type: encryption
+      Policy: !Sub |
+        {
+          "Rules": [
+            {
+              "ResourceType": "collection",
+              "Resource": ["collection/helpdesk-kb-${Environment}"]
+            }
+          ],
+          "AWSOwnedKey": true
+        }
+
+  # OpenSearch Serverless Network Policy
+  OpenSearchNetworkPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    Properties:
+      Name: !Sub 'helpdesk-kb-network-${Environment}'
+      Type: data
+      Policy: !Sub |
+        [
+          {
+            "Rules": [
+              {
+                "ResourceType": "collection",
+                "Resource": ["collection/helpdesk-kb-${Environment}"],
+                "Permission": ["aoss:*"]
+              }
+            ],
+            "Principal": [
+              "${BedrockKnowledgeBaseRoleArn}",
+              "${AWS::StackId}"
+            ]
+          }
+        ]
+
+  # カスタムリソース用Lambda実行ロール
+  KnowledgeBaseCreatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockKnowledgeBaseCreation
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:CreateKnowledgeBase
+                  - bedrock:DeleteKnowledgeBase
+                  - bedrock:UpdateKnowledgeBase
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:CreateDataSource
+                  - bedrock:DeleteDataSource
+                  - bedrock:UpdateDataSource
+                  - bedrock:StartIngestionJob
+                  - iam:PassRole
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${KnowledgeBaseBucketName}'
+                  - !Sub 'arn:aws:s3:::${KnowledgeBaseBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                Resource: !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*'
+
+  # カスタムリソース用Lambda関数
+  KnowledgeBaseCreatorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'helpdesk-kb-creator-${Environment}'
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt KnowledgeBaseCreatorRole.Arn
+      Timeout: 900
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import cfnresponse
+          import time
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          bedrock_agent = boto3.client('bedrock-agent')
+          
+          def handler(event, context):
+              request_type = event['RequestType']
+              properties = event['ResourceProperties']
+              
+              try:
+                  if request_type == 'Create':
+                      response = create_knowledge_base(properties)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, response)
+                  elif request_type == 'Update':
+                      response = update_knowledge_base(properties, event['PhysicalResourceId'])
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, response)
+                  elif request_type == 'Delete':
+                      delete_knowledge_base(event['PhysicalResourceId'])
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {})
+              except Exception as e:
+                  logger.error(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
+          
+          def create_knowledge_base(properties):
+              name = properties['Name']
+              role_arn = properties['RoleArn']
+              embedding_model = properties.get('EmbeddingModel', 'amazon.titan-embed-text-v1')
+              
+              # Create knowledge base
+              kb_response = bedrock_agent.create_knowledge_base(
+                  name=name,
+                  description=f'Knowledge base for {name}',
+                  roleArn=role_arn,
+                  knowledgeBaseConfiguration={
+                      'type': 'VECTOR',
+                      'vectorKnowledgeBaseConfiguration': {
+                          'embeddingModelArn': f'arn:aws:bedrock:{boto3.Session().region_name}::foundation-model/{embedding_model}'
+                      }
+                  },
+                  storageConfiguration={
+                      'type': 'OPENSEARCH_SERVERLESS',
+                      'opensearchServerlessConfiguration': {
+                          'collectionArn': properties['CollectionArn'],
+                          'vectorIndexName': 'helpdesk-index',
+                          'fieldMapping': {
+                              'vectorField': 'embedding',
+                              'textField': 'text',
+                              'metadataField': 'metadata'
+                          }
+                      }
+                  }
+              )
+              
+              kb_id = kb_response['knowledgeBase']['knowledgeBaseId']
+              
+              # Wait for knowledge base to be active
+              time.sleep(10)
+              
+              # Create data source
+              ds_response = bedrock_agent.create_data_source(
+                  knowledgeBaseId=kb_id,
+                  name=f'{name}-datasource',
+                  dataSourceConfiguration={
+                      'type': 'S3',
+                      's3Configuration': {
+                          'bucketArn': f"arn:aws:s3:::{properties['BucketName']}",
+                          'inclusionPrefixes': ['qa-data/']
+                      }
+                  }
+              )
+              
+              return {
+                  'KnowledgeBaseId': kb_id,
+                  'DataSourceId': ds_response['dataSource']['dataSourceId']
+              }
+          
+          def update_knowledge_base(properties, physical_id):
+              # 簡略化のため、更新は再作成として実装
+              return {'KnowledgeBaseId': physical_id}
+          
+          def delete_knowledge_base(kb_id):
+              try:
+                  # List and delete data sources first
+                  ds_list = bedrock_agent.list_data_sources(knowledgeBaseId=kb_id)
+                  for ds in ds_list.get('dataSourceSummaries', []):
+                      bedrock_agent.delete_data_source(
+                          knowledgeBaseId=kb_id,
+                          dataSourceId=ds['dataSourceId']
+                      )
+                  
+                  # Delete knowledge base
+                  bedrock_agent.delete_knowledge_base(knowledgeBaseId=kb_id)
+              except Exception as e:
+                  logger.warning(f"Error during deletion: {str(e)}")
+
+  # Bedrock Knowledge Base (カスタムリソース)
+  BedrockKnowledgeBase:
+    Type: Custom::BedrockKnowledgeBase
+    DependsOn: OpenSearchCollection
+    Properties:
+      ServiceToken: !GetAtt KnowledgeBaseCreatorFunction.Arn
+      Name: !Sub 'helpdesk-kb-${Environment}'
+      RoleArn: !Ref BedrockKnowledgeBaseRoleArn
+      CollectionArn: !GetAtt OpenSearchCollection.Arn
+      BucketName: !Ref KnowledgeBaseBucketName
+      EmbeddingModel: 'amazon.titan-embed-text-v1'
+
+Outputs:
+  KnowledgeBaseId:
+    Description: 'Bedrock Knowledge Base ID'
+    Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseId
+    Export:
+      Name: !Sub '${StackName}-KnowledgeBaseId'
+  
+  DataSourceId:
+    Description: 'Bedrock Data Source ID'
+    Value: !GetAtt BedrockKnowledgeBase.DataSourceId
+    Export:
+      Name: !Sub '${StackName}-DataSourceId'
+  
+  OpenSearchCollectionEndpoint:
+    Description: 'OpenSearch Serverless Collection Endpoint'
+    Value: !GetAtt OpenSearchCollection.CollectionEndpoint
+    Export:
+      Name: !Sub '${StackName}-OpenSearchEndpoint'

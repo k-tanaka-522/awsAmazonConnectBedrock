@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "debug"
+  },
+  {
+    "ParameterKey": "BranchName",
+    "ParameterValue": "develop"
+  },
+  {
+    "ParameterKey": "BedrockModelId",
+    "ParameterValue": "claude-3-haiku-20240307"
+  }
+]
